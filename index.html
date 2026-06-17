@@ -269,6 +269,12 @@ svg{display:block;width:100%;overflow:visible}
 </div>
 <div class="fam-grid" id="famGrid"></div>
 
+<div style="margin-bottom:8px;margin-top:20px;display:flex;align-items:center;gap:10px">
+  <span style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:19px;color:var(--tx)">Ingresos de la semana &middot; detalle por d&iacute;a</span>
+  <span id="weekRangeLabel" style="font-size:12px;color:var(--mut)">cargando...</span>
+</div>
+<div class="fam-grid" id="weekFamGrid"></div>
+
 </div>
 <div id="tip"></div>
 
@@ -323,6 +329,9 @@ const CODE_DATA={"BARMAN":{"TROQUELADO":[{"c":"PC0080","n":"COLLARINES SIN IMPRE
 
 /* ===================== STATE ===================== */
 let state={year:"",mes:"",metric:"kg",hiddenFabs:new Set()};
+let WEEK_DAYS=[];   /* ["YYYY-MM-DD",...] últimos 7 días con datos */
+let WEEK_FAM={};    /* {fab:{fam:{date:val}}} */
+let WEEK_CODE={};   /* {fab:{fam:[{c,n,d:{date:val}}]}} */
 
 /* ===================== HELPERS ===================== */
 function monthLabel(m){const[y,mo]=m.split("-");return MESES_ES[+mo]+" "+y.slice(2);}
@@ -709,7 +718,7 @@ function hideTip(){tip.style.opacity=0;}
 function render(){
   rebuildYearButtons();buildMonthSeg();renderKpiLayout();renderFabBars();
   renderLineChart();renderLegend();renderScrapBars();renderScrapChart();
-  renderHeatmap();renderFamilyBreakdown();
+  renderHeatmap();renderFamilyBreakdown();renderWeeklyBreakdown();
   document.getElementById("metricLbl").textContent=state.metric==="kg"?"Kilos":"Unidades";
   document.getElementById("periodoLbl").textContent=state.year||"2024 – 2026";
 }
@@ -776,6 +785,7 @@ async function refreshFromCSV(){
     const text=await resp.text();
     btn.textContent='⟳ Procesando...';
     await new Promise(r=>setTimeout(r,50));
+    buildWeeklyData(text);
     const result=processCSVData(text);
     /* Also refresh cost data */
     try{const cr=await fetch(COST_CSV_URL);if(cr.ok)buildCostData(await cr.text());}catch(e){console.warn('Cost refresh:',e.message);}
@@ -909,6 +919,146 @@ function processCSVData(csvText){
   render();
   return{rows:rows.length,months:allMonths.length};
 }
+/* ===================== WEEKLY DATA ===================== */
+function parseFullDate(str){
+  if(!str||!str.trim())return null;
+  str=str.trim();
+  if(/^\d{4}-\d{2}-\d{2}/.test(str))return str.substring(0,10);
+  const p=str.split('/');
+  if(p.length===3){
+    const a=parseInt(p[0]),b=parseInt(p[1]),y=parseInt(p[2]);
+    if(y>2000){
+      let day,mon;
+      if(a>12){day=a;mon=b;}
+      else if(b>12){day=b;mon=a;}
+      else{day=a;mon=b;}
+      return y+'-'+String(mon).padStart(2,'0')+'-'+String(day).padStart(2,'0');
+    }
+  }
+  return null;
+}
+
+function buildWeeklyData(csvText){
+  const lines=csvText.trim().split('\n');
+  const headers=parseCSVLine(lines[0]).map(h=>h.trim());
+  const iF=headers.indexOf('FECHA'),iPV=headers.indexOf('PROVEEDOR'),
+        iCO=headers.indexOf('CODIGO'),iMP=headers.indexOf('MATERIA PRIMA'),
+        iFM=headers.indexOf('FAMILIA'),iGR=headers.indexOf('GRUPO'),
+        iTK=headers.indexOf('TOTAL KILOS'),iPD=headers.indexOf('PEDIDO');
+  const PROV_MAP={'BARMAN':'BARMAN','VYMAT SRL':'VYMAT','FABRICA DE TUBOS':'FABRICA DE TUBOS',
+                  'TUBOS':'FABRICA DE TUBOS','RESIMAX':'BARMAN','IMPRENTA':'IMPRENTA'};
+  const IMP_FAM=new Set(['MANTELES','MANTELES BURGER','MANTEL GENERICO','SULFITO CORTADO']);
+  const IMP_REMAP={'MANTELES BURGER':'MANTELES','MANTEL GENERICO':'MANTELES'};
+  const VYMAT_REMAP={'VYMAT ROLLOS - MAQUINA AUTOMATICA':'VYMAT ROLLOS - MÁQ. AUTOMÁTICA',
+                     'VYMAT ROLLOS - MAQUINA ANIMAL':'VYMAT ROLLOS - MÁQ. ANIMAL'};
+  const EXCLUDE_FAMS=new Set(['PALLETS TUBOS']);
+  const FABNAMES_W=['BARMAN','VYMAT','FABRICA DE TUBOS','IMPRENTA'];
+  const rows=[];
+  for(let i=1;i<lines.length;i++){
+    const v=parseCSVLine(lines[i]);if(v.length<4)continue;
+    const fullDate=parseFullDate(v[iF]);if(!fullDate)continue;
+    const prov=(v[iPV]||'').trim().toUpperCase();
+    const famRaw=(v[iFM]||'').trim().toUpperCase();
+    let fab=PROV_MAP[prov]||null;
+    if(IMP_FAM.has(famRaw))fab='IMPRENTA';
+    if(!fab||!FABNAMES_W.includes(fab))continue;
+    if((v[iGR]||'').trim().toUpperCase()==='SCRAP FABRICAS')continue;
+    let fam=famRaw;
+    if(fab==='IMPRENTA')fam=IMP_REMAP[fam]||fam;
+    if(fab==='VYMAT')fam=VYMAT_REMAP[fam]||fam;
+    if(EXCLUDE_FAMS.has(fam))continue;
+    const kg=parseFloat((v[iTK]||'0').replace(',','.'))||0;
+    const u=parseFloat((v[iPD]||'0').replace(',','.'))||0;
+    rows.push({fullDate,fab,fam,cod:(v[iCO]||'').trim(),nom:(v[iMP]||'').trim(),kg,u});
+  }
+  const dateSet=new Set(rows.map(r=>r.fullDate));
+  WEEK_DAYS=[...dateSet].sort().slice(-7);
+  const wRows=rows.filter(r=>WEEK_DAYS.includes(r.fullDate));
+  WEEK_FAM={};FABNAMES_W.forEach(f=>{WEEK_FAM[f]={};});
+  wRows.forEach(r=>{
+    const val=r.fab==='FABRICA DE TUBOS'?r.u:r.kg;
+    if(!WEEK_FAM[r.fab][r.fam])WEEK_FAM[r.fab][r.fam]={};
+    WEEK_FAM[r.fab][r.fam][r.fullDate]=(WEEK_FAM[r.fab][r.fam][r.fullDate]||0)+val;
+  });
+  const rawCode={};FABNAMES_W.forEach(f=>{rawCode[f]={};});
+  wRows.forEach(r=>{
+    if(!r.cod)return;
+    const val=r.fab==='FABRICA DE TUBOS'?r.u:r.kg;
+    if(!rawCode[r.fab][r.fam])rawCode[r.fab][r.fam]={};
+    const key=r.cod+'|'+r.nom;
+    if(!rawCode[r.fab][r.fam][key])rawCode[r.fab][r.fam][key]={c:r.cod,n:r.nom,d:{}};
+    rawCode[r.fab][r.fam][key].d[r.fullDate]=(rawCode[r.fab][r.fam][key].d[r.fullDate]||0)+val;
+  });
+  WEEK_CODE={};
+  FABNAMES_W.forEach(fab=>{
+    WEEK_CODE[fab]={};
+    Object.keys(rawCode[fab]).forEach(fam=>{
+      WEEK_CODE[fab][fam]=Object.values(rawCode[fab][fam])
+        .map(({c,n,d})=>({c,n,d,_tot:Object.values(d).reduce((s,v)=>s+v,0)}))
+        .filter(x=>x._tot>0).sort((a,b)=>b._tot-a._tot).map(({c,n,d})=>({c,n,d}));
+    });
+  });
+}
+
+function renderWeeklyBreakdown(){
+  const grid=document.getElementById('weekFamGrid');if(!grid)return;
+  if(!WEEK_DAYS.length){
+    grid.innerHTML='<div style="background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:20px;color:var(--mut);font-size:13px;grid-column:1/-1">Datos semanales no disponibles. Hacer clic en &#8635; Actualizar datos para cargar.</div>';
+    return;
+  }
+  const DIAS=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+  function dayLbl(ds){
+    const d=new Date(ds+'T12:00:00');
+    return DIAS[d.getDay()]+'<br>'+String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0');
+  }
+  const d1=WEEK_DAYS[0],d2=WEEK_DAYS[WEEK_DAYS.length-1];
+  const fmt=s=>{const[y,m,d]=s.split('-');return d+'/'+m+'/'+y.slice(2);};
+  const lbl=document.getElementById('weekRangeLabel');
+  if(lbl)lbl.textContent=fmt(d1)+' – '+fmt(d2)+' · '+WEEK_DAYS.length+' días';
+  const FAB_ORDER=['BARMAN','IMPRENTA','FABRICA DE TUBOS','VYMAT'];
+  const FAB_METRIC={'BARMAN':'kg','IMPRENTA':'kg','FABRICA DE TUBOS':'u','VYMAT':'kg'};
+  let uid=0;
+  grid.innerHTML=FAB_ORDER.map(fab=>{
+    const fData=WEEK_FAM[fab]||{};
+    const cData=WEEK_CODE[fab]||{};
+    const metric=FAB_METRIC[fab];
+    const mLbl=metric==='u'?'unidades':'kg';
+    const color=RAW[fab].color;
+    const families=Object.keys(fData)
+      .map(f=>({f,tot:WEEK_DAYS.reduce((s,d)=>s+(fData[f][d]||0),0)}))
+      .filter(x=>x.tot>0).sort((a,b)=>b.tot-a.tot);
+    const grand=families.reduce((s,x)=>s+x.tot,0);
+    if(!families.length)return`<div class="fam-card"><div class="fam-header"><div class="fam-header-left"><span class="fam-dot" style="background:${color}"></span><span class="fam-fab-name" style="color:${color}">${fab}</span></div><span style="font-size:12px;color:var(--mut)">Sin datos esta semana</span></div></div>`;
+    const cols=WEEK_DAYS.length+2;
+    const thead=`<thead><tr><th class="fnm">Familia</th>${WEEK_DAYS.map(d=>`<th>${dayLbl(d)}</th>`).join('')}<th>Total</th></tr></thead>`;
+    let tbody='<tbody>';
+    families.forEach(({f,tot})=>{
+      const id='wk'+(uid++);
+      const codes=(cData[f]||[]).filter(item=>WEEK_DAYS.some(d=>(item.d[d]||0)>0));
+      const hasD=codes.length>0;
+      tbody+=`<tr class="fam-row${hasD?' fam-expandable-row':''}" ${hasD?`onclick="toggleCodes('${id}')"`:''}><td class="fnm">${hasD?`<span class="fam-expand-icon" id="${id}_icon">&#9658;</span>`:''}<span>${f}</span></td>`;
+      WEEK_DAYS.forEach(d=>{const v=fData[f][d]||0;tbody+=`<td class="${v>0?'v-pos':'zero'}">${v>0?fmtNum(v):'—'}</td>`;});
+      tbody+=`<td class="tot" style="color:${color}">${fmtNum(tot)}</td></tr>`;
+      if(hasD){
+        let sub='';
+        codes.forEach(item=>{
+          const ct=WEEK_DAYS.reduce((s,d)=>s+(item.d[d]||0),0);
+          sub+=`<tr><td class="code-nm"><span class="code-tag">${item.c}</span>${item.n}</td>`;
+          WEEK_DAYS.forEach(d=>{const v=item.d[d]||0;sub+=`<td class="${v>0?'v-pos':'zero'}">${v>0?fmtNum(v):'—'}</td>`;});
+          sub+=`<td class="tot">${fmtNum(ct)}</td></tr>`;
+        });
+        tbody+=`<tr id="${id}" class="code-detail-row" style="display:none"><td colspan="${cols}" style="padding:0"><table class="code-subtable">${sub}</table></td></tr>`;
+      }
+    });
+    tbody+='</tbody>';
+    let tfoot=`<tfoot><tr><td class="fnm">TOTAL &middot; ${mLbl}</td>`;
+    WEEK_DAYS.forEach(d=>{const t=Object.keys(fData).reduce((s,f)=>s+(fData[f][d]||0),0);tfoot+=`<td>${fmtNum(t)}</td>`;});
+    tfoot+=`<td class="tot" style="color:${color}">${fmtNum(grand)}</td></tr></tfoot>`;
+    return`<div class="fam-card"><div class="fam-header" style="cursor:default"><div class="fam-header-left"><span class="fam-dot" style="background:${color}"></span><span class="fam-fab-name" style="color:${color}">${fab}</span><span class="fam-metric-tag">${mLbl}</span></div><span style="font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:700;color:${color}">${fmtNum(grand)} ${mLbl} &#9650;</span></div><div class="fam-body"><div class="fam-scroll"><table class="ftbl">${thead}${tbody}${tfoot}</table></div></div></div>`;
+  }).join('');
+}
+
+
 /* ===================== COST DATA ===================== */
 function buildCostData(csvText){
   const lines=csvText.trim().split('\n');
@@ -946,6 +1096,7 @@ function buildCostData(csvText){
     if(!resp.ok)throw new Error("HTTP "+resp.status);
     const text=await resp.text();
     if(costResp&&costResp.ok)buildCostData(await costResp.text());
+    buildWeeklyData(text);
     processCSVData(text);
     document.getElementById('refreshStatus').textContent=
       'Auto-actualizado: '+new Date().toLocaleTimeString('es-AR');
