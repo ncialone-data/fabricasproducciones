@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Producciones Fábricas</title>
+<title>Producciones Fábricas · Dashboard</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Outfit:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -434,17 +434,28 @@ function renderKpiLayout(){
 
   const maxV=Math.max(...FAB_ORDER.map(f=>getTotFab(f,months)),1);
   const fabCols=FAB_ORDER.map(fab=>{
-    const v=getTotFab(fab,months),{color}=RAW[fab];
-    const pct=v/maxV*100;
-    /* "Mejor mes" uses all chart months — ignores month filter */
+    /* FABRICA DE TUBOS always shows units; others follow state.metric */
+    const fabMetric=fab==='FABRICA DE TUBOS'?'u':metric;
+    const v=months.reduce((s,m)=>s+((RAW[fab].data[m]||{kg:0,u:0,sc:0})[fabMetric]||0),0);
+    const {color}=RAW[fab];
+    /* Bar: normalize FABRICA DE TUBOS against its own monthly max */
     const allMs=getChartMonths();
-    const bm=allMs.length?allMs.reduce((b,m)=>getVal(fab,m)>getVal(fab,b)?m:b,allMs[0]):'';
+    const ownMax=fab==='FABRICA DE TUBOS'
+      ?Math.max(...allMs.map(m=>(RAW[fab].data[m]||{u:0}).u),1)
+      :maxV;
+    const pct=v/ownMax*100;
+    /* "Mejor mes" uses all chart months — ignores month filter */
+    const bm=allMs.length?allMs.reduce((b,m)=>{
+      const va=(RAW[fab].data[m]||{kg:0,u:0,sc:0})[fabMetric]||0;
+      const vb=(RAW[fab].data[b]||{kg:0,u:0,sc:0})[fabMetric]||0;
+      return va>vb?m:b;
+    },allMs[0]):'';
     const fabCost=getCostFab(fab,months);
     const fabCard=`<div class="fab-card">
       <div class="fc-accent" style="background:${color}"></div>
       <div class="fc-top"><div class="fc-dot" style="background:${color}"></div><div class="fc-name">${fab}</div></div>
-      <div class="fc-lbl">Total ${metric==="kg"?"Kilos":"Unidades"}</div>
-      <div class="fc-val" style="color:${color}">${fmtVal(v,metric)}</div>
+      <div class="fc-lbl">Total ${fabMetric==="u"?"Unidades":"Kilos"}</div>
+      <div class="fc-val" style="color:${color}">${fmtVal(v,fabMetric)}</div>
       ${fabCost>0?`<div class="fc-cost">${fmtCost(fabCost)}</div>`:''}
       <div class="fc-sub">Mejor mes: ${bm?monthLabel(bm):'—'}</div>
       <div class="fc-bar"><div class="fc-prog" style="width:${pct}%;background:${color}"></div></div>
