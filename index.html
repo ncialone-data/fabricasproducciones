@@ -1091,8 +1091,21 @@ function buildCostData(csvText){
     if(IMP_FAM.has(fam))fab='IMPRENTA';
     if(!fab)continue;
     if(iGR>=0&&(v[iGR]||'').trim().toUpperCase()==='SCRAP FABRICAS')continue;
-    /* ARS format: period=thousands sep, comma=decimal sep */
-    const imp=parseFloat((v[iI]||'0').replace(/\./g,'').replace(',','.'))||0;
+    /* Smart IMPORTE parse: gviz may export raw numbers with period as decimal */
+    const _raw=(v[iI]||'0').trim();
+    let imp=0;
+    if(_raw.includes(',')&&_raw.includes('.')){
+      /* Both separators: whichever comes last is the decimal */
+      if(_raw.lastIndexOf('.')>_raw.lastIndexOf(',')){
+        imp=parseFloat(_raw.replace(/,/g,''))||0; /* US: 1,234.56 */
+      } else {
+        imp=parseFloat(_raw.replace(/\./g,'').replace(',','.'))||0; /* EU: 1.234,56 */
+      }
+    } else if(_raw.includes(',')){
+      imp=parseFloat(_raw.replace(',','.'))||0; /* comma=decimal: 1234,56 */
+    } else {
+      imp=parseFloat(_raw)||0; /* plain number or period=decimal: 1234.56 */
+    }
     if(!COST_DATA[fab])COST_DATA[fab]={};
     COST_DATA[fab][ym]=(COST_DATA[fab][ym]||0)+imp;
   }
