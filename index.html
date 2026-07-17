@@ -3,15 +3,15 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>BARMAN &middot; Producci&oacute;n</title>
+<title>FABRICA DE TUBOS &middot; Producci&oacute;n</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;700&family=Outfit:wght@300;400;500;600;700&family=Bricolage+Grotesque:wght@700;800&display=swap" rel="stylesheet">
 <style>
 :root{
-  --acc:#16a34a;
-  --acc-l:#f0fdf4;
-  --shadow-acc:rgba(22,163,74,0.35);
-  --shadow-acc-sm:rgba(22,163,74,0.28);
+  --acc:#ea580c;
+  --acc-l:#fff7ed;
+  --shadow-acc:rgba(234,88,12,0.35);
+  --shadow-acc-sm:rgba(234,88,12,0.28);
   --bg:#f0f2f6;
   --panel:#fff;
   --tx:#111827;
@@ -145,8 +145,8 @@ table.ftbl{width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed
 
 <div id="loader" class="loader">
   <div class="loader-inner">
-    <div class="loader-badge">BAR</div>
-    <div class="loader-name">BARMAN</div>
+    <div class="loader-badge">TUB</div>
+    <div class="loader-name">FABRICA DE TUBOS</div>
     <div class="loader-text">Cargando datos...</div>
     <div class="loader-spinner"></div>
   </div>
@@ -155,9 +155,9 @@ table.ftbl{width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed
 <div class="wrap" id="main" style="display:none">
   <header>
     <div class="brand">
-      <div class="fab-badge">BAR</div>
+      <div class="fab-badge">TUB</div>
       <div>
-        <h1>BARMAN</h1>
+        <h1>FABRICA DE TUBOS</h1>
         <div class="sub"><span class="dot"></span><span>Producci&oacute;n &middot; <span id="periodoLbl">2024&ndash;2026</span></span></div>
       </div>
     </div>
@@ -177,7 +177,7 @@ table.ftbl{width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed
   <div class="card">
     <div class="c-head">
       <span class="c-title">Producci&oacute;n mensual</span>
-      <span class="c-note" id="chartNote">Kilos por mes</span>
+      <span class="c-note" id="chartNote">Unidades por mes</span>
     </div>
     <div class="chart-scroll"><div id="chartWrap"></div></div>
   </div>
@@ -218,13 +218,21 @@ table.ftbl{width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed
 <div class="tip" id="tip"></div>
 
 <script>
+/* ===== VERSION 03 - PARIDAD CON BARMAN (diseño actualizado) =====
+   Portado desde: index.html de BARMAN (1784288669422_index.html), version con:
+   objetivo mensual, comparador 'vs. mes anterior' (barras), tabla semanal x familia,
+   orden de secciones actualizado y familias ordenadas alfabeticamente.
+   Se mantiene: FAB='FABRICA DE TUBOS', FAB_COLOR='#ea580c' (naranja, sin cambios),
+   FAB_METRIC='u' (Unidades como medida principal), HAS_SCRAP=false,
+   Kilos como tarjeta secundaria (equivalente), mismo CSV_URL / PROV_MAP de origen.
+   OBJETIVO_MENSUAL_U=250000 definido por Nahuel el 17/07/2026. ===== */
 const CSV_URL='https://docs.google.com/spreadsheets/d/e/2PACX-1vSHeQ6byhXx1kd9hGG3lzIDCKZgbJc8FeLXvj_5HZkm_sWzMOHkxcctyNpQuoXNk25yceOwgANfJ23Y/pub?gid=0&single=true&output=csv';
-const FAB='BARMAN';
-const FAB_COLOR='#16a34a';
-const FAB_METRIC='kg';   /* 'kg' or 'u' */
-const FAB_METRIC_LABEL='Kilos';
-const HAS_SCRAP=true;
-const OBJETIVO_MENSUAL_KG=100000;   /* 100 toneladas - Barman, minuta reunion 15/07/2026, tabla objetivos produccion */
+const FAB='FABRICA DE TUBOS';
+const FAB_COLOR='#ea580c';
+const FAB_METRIC='u';   /* 'kg' or 'u' */
+const FAB_METRIC_LABEL='Unidades';
+const HAS_SCRAP=false;
+const OBJETIVO_MENSUAL_U=250000;   /* 250.000 unidades/mes - FABRICA DE TUBOS, definido por Nahuel el 17/07/2026 */
 
 const MES_ES=["","Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
 function mlbl(ym){if(!ym)return'';const[y,m]=ym.split('-');return MES_ES[+m]+" '"+y.slice(2);}
@@ -313,9 +321,9 @@ function getObjectiveBreakdown(months){
     const elapsedBD=cutoff>0?countBusinessDays(y,mo,1,cutoff):0;
     totalBDsum+=totalBD;
     elapsedBDsum+=elapsedBD;
-    objAcumSum+=OBJETIVO_MENSUAL_KG/totalBD*elapsedBD;
+    objAcumSum+=OBJETIVO_MENSUAL_U/totalBD*elapsedBD;
   });
-  const dailyRate=totalBDsum>0?(OBJETIVO_MENSUAL_KG*months.length)/totalBDsum:0;
+  const dailyRate=totalBDsum>0?(OBJETIVO_MENSUAL_U*months.length)/totalBDsum:0;
   return{dailyRate,elapsedBD:elapsedBDsum,objAcum:objAcumSum};
 }
 
@@ -513,11 +521,11 @@ function renderKPIs(){
     <div class="k-obj-split">
       <div class="k-obj-pct${objTier!=='none'?' tier-'+objTier:''}">${objPct!==null?Math.round(objPct):'&mdash;'}${objPct!==null?'%':''}</div>
       ${objHasData?`<div class="k-obj-rows">
-        <span>Objetivo mensual</span><b>${Math.round(OBJETIVO_MENSUAL_KG/1000)}ton</b>
-        <span>Kilos diarios esperado</span><b>${fmtNum(objBreak.dailyRate)} kg</b>
+        <span>Objetivo mensual</span><b>${fmtNum(OBJETIVO_MENSUAL_U)} u</b>
+        <span>Unidades diarias esperado</span><b>${fmtNum(objBreak.dailyRate)} u</b>
         <span>D&iacute;as laborales</span><b>${objBreak.elapsedBD}</b>
-        <span>Esperado a hoy</span><b>${fmtNum(objBreak.objAcum)} kg</b>
-        <span>Kilos actuales</span><b>${fmtNum(objReal)} kg</b>
+        <span>Esperado a hoy</span><b>${fmtNum(objBreak.objAcum)} u</b>
+        <span>Unidades actuales</span><b>${fmtNum(objReal)} u</b>
       </div>`:`<div class="k-sub">Sin datos suficientes</div>`}
     </div>
   </div>`;
@@ -525,7 +533,7 @@ function renderKPIs(){
   kpis+=`<div class="kpi">
     <div class="k-bar"></div>
     <div class="k-lbl">Total del d&iacute;a</div>
-    <div class="k-val">${fmtNum(lastDayTotal)} <span class="k-unit">kg</span></div>
+    <div class="k-val">${fmtNum(lastDayTotal)} <span class="k-unit">${unit}</span></div>
     <div class="k-sub">${lastDayLbl} &middot; &uacute;ltimo ingreso</div>
   </div>`;
 
@@ -953,7 +961,7 @@ async function loadData(isRefresh){
       btn.innerHTML='&#10007; Error';btn.className='refresh-btn error';
       status.textContent=err.message;btn.disabled=false;
     }else{
-      document.getElementById('loader').innerHTML=`<div class="loader-inner"><div class="loader-badge" style="background:${FAB_COLOR}">BAR</div><div class="loader-name">BARMAN</div><div class="loader-text" style="color:#dc2626">Error al cargar datos</div><button class="retry-btn" onclick="loadData(false)">Reintentar</button></div>`;
+      document.getElementById('loader').innerHTML=`<div class="loader-inner"><div class="loader-badge" style="background:${FAB_COLOR}">TUB</div><div class="loader-name">FABRICA DE TUBOS</div><div class="loader-text" style="color:#dc2626">Error al cargar datos</div><button class="retry-btn" onclick="loadData(false)">Reintentar</button></div>`;
     }
     console.error(err);
   }
