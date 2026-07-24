@@ -197,9 +197,20 @@ svg{display:block;width:100%;overflow:visible}
 @media(max-width:1100px){.fam-grid{grid-template-columns:1fr}}
 @media(max-width:960px){.kpi-fab-grid{grid-template-columns:repeat(2,1fr)}.grid{grid-template-columns:1fr}.card.full{grid-column:1}}
 @media(max-width:600px){.kpi-fab-grid{grid-template-columns:1fr 1fr}}
+
+/* ===== LOADING OVERLAY (evita mostrar datos precargados al abrir) ===== */
+#loadingOverlay{position:fixed;inset:0;z-index:9999;background:var(--bg);
+  display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px;
+  transition:opacity .35s ease;opacity:1}
+#loadingOverlay.hide{opacity:0;pointer-events:none}
+.loading-spinner{width:34px;height:34px;border:3px solid var(--line);border-top-color:var(--acc);
+  border-radius:50%;animation:loadspin .8s linear infinite}
+@keyframes loadspin{to{transform:rotate(360deg)}}
+.loading-txt{font-family:"Outfit",sans-serif;font-size:14px;color:var(--mut);letter-spacing:.02em}
 </style>
 </head>
 <body>
+<div id="loadingOverlay"><div class="loading-spinner"></div><div class="loading-txt">Cargando datos...</div></div>
 <div class="wrap">
 
 <header>
@@ -1112,6 +1123,13 @@ function buildCostData(csvText){
 }
 
 
+function hideLoadingOverlay(){
+  const ov=document.getElementById('loadingOverlay');
+  if(!ov)return;
+  ov.classList.add('hide');
+  setTimeout(()=>ov.remove(),400);
+}
+
 /* ===================== AUTO-LOAD ON OPEN ===================== */
 (async function autoLoad(){
   try{
@@ -1126,6 +1144,12 @@ function buildCostData(csvText){
       'Auto-actualizado: '+new Date().toLocaleTimeString('es-AR');
   }catch(e){
     console.warn('Auto-load failed:',e.message);
+  }finally{
+    /* Se oculta SIEMPRE (éxito o error) recién acá: así nunca se ve
+       el dato precargado embebido en el archivo, solo el dato fresco
+       recién llegado del CSV (o, si falló la carga, la última copia
+       embebida como respaldo, pero ya con el estado real resuelto). */
+    hideLoadingOverlay();
   }
 })();
 
@@ -1133,3 +1157,5 @@ function buildCostData(csvText){
 </div>
 </body>
 </html>
+
+<!-- - breve descripcion de lo hecho: se agrego un overlay de carga (Cargando datos...) que cubre el dashboard desde la apertura y se oculta recien cuando autoLoad() termina (exito o error), para que nunca se vea un flash de los datos precargados/embebidos (RAW, FAM_*, CODE_DATA) que sirven de respaldo offline; el fetch real del CSV sigue funcionando exactamente igual que en la version 04, no se toco ningun dato ni logica de parseo. -->
